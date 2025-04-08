@@ -284,38 +284,51 @@ export const createMcpServer = (config?: MobileMcpConfig): McpServer => {
 		}
 	);
 
+	// Use server.tool directly for screenshot since it returns non-text content
 	server.tool(
 		"mobile_take_screenshot",
 		"Take a screenshot of the mobile device. Use this to understand what's on screen, if you need to press an element that is available through view hierarchy then you must list elements on screen instead. Do not cache this result.",
 		{},
-		async ({}) => {
-			requireRobot();
+		async args => {
+			if (!robot) {
+				throw new Error("No device selected");
+			}
 
 			try {
-				const screenshot = await robot!.getScreenshot();
+				const screenshot = await robot.getScreenshot();
+				trace(`Raw screenshot size: ${screenshot.length} bytes`);
 
-				// Scale down the screenshot by 50%
-				const image = sharp(screenshot);
-				const metadata = await image.metadata();
-				if (!metadata.width) {
-					throw new Error("Failed to get screenshot metadata");
+				// Try to convert/process the image with robust error handling
+				try {
+					// Scale down the screenshot by 50%
+					const image = sharp(screenshot);
+					const metadata = await image.metadata();
+					if (!metadata.width) {
+						throw new Error("Failed to get screenshot metadata");
+					}
+					trace(`Screenshot format: ${metadata.format}, width: ${metadata.width}, height: ${metadata.height}`);
+
+					const resizedScreenshot = await image
+						.resize(Math.floor(metadata.width / 2))
+						.jpeg({ quality: 75 })
+						.toBuffer();
+
+					const screenshot64 = resizedScreenshot.toString("base64");
+					trace(`Screenshot processed: ${resizedScreenshot.length} bytes`);
+
+					return {
+						content: [{ type: "image", data: screenshot64, mimeType: "image/jpeg" }]
+					};
+				} catch (processErr: any) {
+					// If Sharp fails, try a different approach by forcing PNG conversion
+					error(`Error processing screenshot with Sharp: ${processErr.message}`);
+					error("Trying fallback method...");
+					// Fallback: just base64 encode the raw screenshot data
+					const screenshot64 = screenshot.toString("base64");
+					return {
+						content: [{ type: "image", data: screenshot64, mimeType: "image/png" }]
+					};
 				}
-
-				const resizedScreenshot = await image
-					.resize(Math.floor(metadata.width / 2))
-					.jpeg({ quality: 75 })
-					.toBuffer();
-
-				// debug:
-				// writeFileSync('/tmp/screenshot.png', screenshot);
-				// writeFileSync('/tmp/screenshot-scaled.jpg', resizedScreenshot);
-
-				const screenshot64 = resizedScreenshot.toString("base64");
-				trace(`Screenshot taken: ${screenshot.length} bytes`);
-
-				return {
-					content: [{ type: "image", data: screenshot64, mimeType: "image/jpeg" }]
-				};
 			} catch (err: any) {
 				error(`Error taking screenshot: ${err.message} ${err.stack}`);
 				return {

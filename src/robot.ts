@@ -84,4 +84,6 @@ export interface Robot {
 	 * return a filtered list of elements that make sense to interact with.
 	 */
 	getElementsOnScreen(): Promise<any[]>;
+
+	tapUnityGame?(x: number, y: number): Promise<void>;
 }

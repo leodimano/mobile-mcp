@@ -201,7 +201,15 @@ export class AndroidRobot implements Robot {
 	}
 
 	public async tap(x: number, y: number): Promise<void> {
+		// Standard tap method
 		this.adb("shell", "input", "tap", `${x}`, `${y}`);
+	}
+
+	public async tapUnityGame(x: number, y: number): Promise<void> {
+		// Special method for Unity games - simulates touch better than tap
+		// Uses a short swipe (down and up) at exactly the same point to better simulate a touch event
+		// Duration of 1ms ensures it's registered as a tap, not a swipe
+		this.adb("shell", "input", "swipe", `${x}`, `${y}`, `${x}`, `${y}`, "1");
 	}
 }
 

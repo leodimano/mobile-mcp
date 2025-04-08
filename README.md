@@ -43,7 +43,7 @@ How we help to scale mobile automation:
 
 - 🚀 **Fast and lightweight**: Uses native accessibility trees for most interactions, or screenshot based coordinates where a11y labels are not available. 
 - 🤖 **LLM-friendly**: No computer vision model required in Accessibility (Snapshot).
-- 🧿 **Visual Sense**: Evaluates and analyses what’s actually rendered on screen to decide the next action. If accessibility data or view-hierarchy coordinates are unavailable, it falls back to screenshot-based analysis.
+- 🧿 **Visual Sense**: Evaluates and analyses what's actually rendered on screen to decide the next action. If accessibility data or view-hierarchy coordinates are unavailable, it falls back to screenshot-based analysis.
 - 📊 **Deterministic tool application**: Reduces ambiguity found in purely screenshot-based approaches by relying on structured data whenever possible.
 - 📺 **Extract structured data**: Enables you to extract structred data from anything visible on screen. 
 
@@ -76,7 +76,49 @@ How we help to scale mobile automation:
 [Claude Code:](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 
 ```
-claude mcp add mobile -- npx -y @mobilenext/mobile-mcp@latest ⁠
+claude mcp add mobile -- npx -y @mobilenext/mobile-mcp@latest ⁠
+```
+
+### Platform-Specific Configuration
+
+Mobile MCP now supports environment variables to control which device types are enabled. This is particularly useful on Windows, where iOS devices/simulators are not supported.
+
+| Environment Variable | Description | Default on Windows | Default on macOS/Linux |
+|---------------------|-------------|---------------------|------------------------|
+| `ENABLE_IOS_DEVICES` | Enable/disable iOS physical device support | `false` | `true` |
+| `ENABLE_IOS_SIMULATORS` | Enable/disable iOS simulator support | `false` | `true` |
+| `ENABLE_ANDROID_DEVICES` | Enable/disable Android physical device support | `true` | `true` |
+| `ENABLE_ANDROID_EMULATORS` | Enable/disable Android emulator support | `true` | `true` |
+
+#### Example: Windows Setup (Android only)
+
+You can explicitly set these environment variables before running Mobile MCP:
+
+```cmd
+set ENABLE_IOS_DEVICES=false
+set ENABLE_IOS_SIMULATORS=false
+set ENABLE_ANDROID_DEVICES=true
+set ENABLE_ANDROID_EMULATORS=true
+npx -y @mobilenext/mobile-mcp@latest
+```
+
+Or configure them in your Claude or MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "mobile-mcp": {
+      "command": "npx",
+      "args": ["-y", "@mobilenext/mobile-mcp@latest"],
+      "env": {
+        "ENABLE_IOS_DEVICES": "false",
+        "ENABLE_IOS_SIMULATORS": "false",
+        "ENABLE_ANDROID_DEVICES": "true",
+        "ENABLE_ANDROID_EMULATORS": "true"
+      }
+    }
+  }
+}
 ```
 
 [Read more in our wiki](https://github.com/mobile-next/mobile-mcp/wiki)! 🚀

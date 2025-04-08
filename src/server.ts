@@ -8,13 +8,14 @@ import { AndroidRobot, getConnectedDevices } from "./android";
 import { Robot } from "./robot";
 import { SimctlManager } from "./iphone-simulator";
 import { IosManager, IosRobot } from "./ios";
+import { MobileMcpConfig } from "./config";
 
 const getAgentVersion = (): string => {
 	const json = require("../package.json");
 	return json.version;
 };
 
-export const createMcpServer = (): McpServer => {
+export const createMcpServer = (config?: MobileMcpConfig): McpServer => {
 
 	const server = new McpServer({
 		name: "mobile-mcp",
@@ -47,7 +48,8 @@ export const createMcpServer = (): McpServer => {
 	};
 
 	let robot: Robot | null;
-	const simulatorManager = new SimctlManager();
+	// Only initialize iOS simulator manager if enabled
+	const simulatorManager = config?.enableIosSimulators !== false ? new SimctlManager() : null;
 
 	const requireRobot = () => {
 		if (!robot) {
@@ -60,11 +62,37 @@ export const createMcpServer = (): McpServer => {
 		"List all available devices. This includes both physical devices and simulators. If there is more than one device returned, you need to let the user select one of them.",
 		{},
 		async ({}) => {
-			const iosManager = new IosManager();
-			const devices = await simulatorManager.listBootedSimulators();
-			const simulatorNames = devices.map(d => d.name);
-			const androidDevices = getConnectedDevices();
-			const iosDevices = await iosManager.listDevices();
+			let simulatorNames: string[] = [];
+			let iosDevices: string[] = [];
+			let androidDevices: string[] = [];
+
+			// Only fetch iOS simulators if enabled
+			if (config?.enableIosSimulators !== false && simulatorManager) {
+				const devices = await simulatorManager.listBootedSimulators();
+				simulatorNames = devices.map(d => d.name);
+			}
+
+			// Only fetch iOS devices if enabled
+			if (config?.enableIosDevices !== false) {
+				const iosManager = new IosManager();
+				try {
+					iosDevices = await iosManager.listDevices();
+				} catch (err) {
+					error(`Failed to list iOS devices: ${err}`);
+					iosDevices = [];
+				}
+			}
+
+			// Only fetch Android devices if enabled
+			if (config?.enableAndroidDevices !== false || config?.enableAndroidEmulators !== false) {
+				try {
+					androidDevices = getConnectedDevices();
+				} catch (err) {
+					error(`Failed to list Android devices: ${err}`);
+					androidDevices = [];
+				}
+			}
+
 			return `Found these iOS simulators: [${simulatorNames.join(".")}], iOS devices: [${iosDevices.join(",")}] and Android devices: [${androidDevices.join(",")}]`;
 		}
 	);
@@ -79,12 +107,24 @@ export const createMcpServer = (): McpServer => {
 		async ({ device, deviceType }) => {
 			switch (deviceType) {
 				case "simulator":
+					if (config?.enableIosSimulators === false) {
+						throw new Error("iOS simulators are disabled in the current configuration");
+					}
+					if (!simulatorManager) {
+						throw new Error("iOS simulator manager is not initialized");
+					}
 					robot = simulatorManager.getSimulator(device);
 					break;
 				case "ios":
+					if (config?.enableIosDevices === false) {
+						throw new Error("iOS devices are disabled in the current configuration");
+					}
 					robot = new IosRobot(device);
 					break;
 				case "android":
+					if (config?.enableAndroidDevices === false && config?.enableAndroidEmulators === false) {
+						throw new Error("Android devices/emulators are disabled in the current configuration");
+					}
 					robot = new AndroidRobot(device);
 					break;
 			}

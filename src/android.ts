@@ -4,6 +4,7 @@ import { execFileSync } from "child_process";
 import * as xml from "fast-xml-parser";
 
 import { Bounds, Button, Dimensions, ElementCoordinates, InstalledApp, Robot, SwipeDirection } from "./robot";
+import { sendTouchEventBinary } from "./android-input";
 
 interface UiAutomatorXmlNode {
 	node: UiAutomatorXmlNode[];
@@ -18,7 +19,7 @@ interface UiAutomatorXml {
 	};
 }
 
-const getAdbPath = (): string => {
+export const getAdbPath = (): string => {
 	let executable = "adb";
 	if (process.env.ANDROID_HOME) {
 		executable = path.join(process.env.ANDROID_HOME, "platform-tools", "adb");
@@ -200,16 +201,47 @@ export class AndroidRobot implements Robot {
 		this.adb("shell", "input", "keyevent", BUTTON_MAP[button]);
 	}
 
-	public async tap(x: number, y: number): Promise<void> {
-		// Standard tap method
-		this.adb("shell", "input", "tap", `${x}`, `${y}`);
+	public async tap(x: number, y: number, debug: boolean = false): Promise<void> {
+		try {
+			// Get screen dimensions for better coordinate translation
+			const screenSize = await this.getScreenSize();
+			
+			// Convert normalized coordinates (0-1) to actual screen coordinates
+			const screenX = Math.round(x * screenSize.width);
+			const screenY = Math.round(y * screenSize.height);
+			
+			if (debug) {
+				console.log(`Converting normalized coordinates (${x}, ${y}) to screen coordinates (${screenX}, ${screenY})`);
+			}
+			
+			// First try to use our direct touch event method for better reliability
+			await sendTouchEventBinary(this.deviceId, screenX, screenY, screenSize.width, screenSize.height, debug);
+		} catch (err) {
+			// Fall back to standard input tap if the direct method fails
+			console.error("Failed to use direct touch method, falling back to input tap:", err);
+			
+			// Get screen dimensions for converting normalized coordinates
+			const screenSize = await this.getScreenSize();
+			const screenX = Math.round(x * screenSize.width);
+			const screenY = Math.round(y * screenSize.height);
+			
+			this.adb("shell", "input", "tap", `${screenX}`, `${screenY}`);
+		}
 	}
 
-	public async tapUnityGame(x: number, y: number): Promise<void> {
-		// Special method for Unity games - simulates touch better than tap
-		// Uses a short swipe (down and up) at exactly the same point to better simulate a touch event
-		// Duration of 1ms ensures it's registered as a tap, not a swipe
-		this.adb("shell", "input", "swipe", `${x}`, `${y}`, `${x}`, `${y}`, "1");
+	public async tapUnityGame(x: number, y: number, debug: boolean = false): Promise<void> {
+		// Unity games often need direct touch events to work properly
+		const screenSize = await this.getScreenSize();
+		
+		// Convert normalized coordinates (0-1) to actual screen coordinates
+		const screenX = Math.round(x * screenSize.width);
+		const screenY = Math.round(y * screenSize.height);
+		
+		if (debug) {
+			console.log(`Unity tap: Converting normalized coordinates (${x}, ${y}) to screen coordinates (${screenX}, ${screenY})`);
+		}
+		
+		await sendTouchEventBinary(this.deviceId, screenX, screenY, screenSize.width, screenSize.height, debug);
 	}
 }
 

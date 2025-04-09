@@ -9,6 +9,7 @@ import { Robot } from "./robot";
 import { SimctlManager } from "./iphone-simulator";
 import { IosManager, IosRobot } from "./ios";
 import { MobileMcpConfig } from "./config";
+import { VisionAnalyzer } from "./vision-analyzer";
 
 const getAgentVersion = (): string => {
 	const json = require("../package.json");
@@ -190,39 +191,8 @@ export const createMcpServer = (config?: MobileMcpConfig): McpServer => {
 		},
 		async ({ x, y }) => {
 			requireRobot();
-			const screenSize = await robot!.getScreenSize();
-			const x0 = Math.floor(screenSize.width * x);
-			const y0 = Math.floor(screenSize.height * y);
-			await robot!.tap(x0, y0);
+			await robot!.tap(x, y);
 			return `Clicked on screen at coordinates: ${x}, ${y}`;
-		}
-	);
-
-	tool(
-		"mobile_list_elements_on_screen",
-		"List elements on screen and their coordinates, with display text or accessibility label. Do not cache this result.",
-		{
-		},
-		async ({}) => {
-			requireRobot();
-			const screenSize = await robot!.getScreenSize();
-			const elements = await robot!.getElementsOnScreen();
-
-			const result = elements.map(element => {
-				const x0 = element.rect.x0 / screenSize.width;
-				const y0 = element.rect.y0 / screenSize.height;
-				const x1 = element.rect.x1 / screenSize.width;
-				const y1 = element.rect.y1 / screenSize.height;
-				return {
-					text: element.label,
-					coordinates: {
-						x: Number((x0 + x1) / 2).toFixed(3),
-						y: Number((y0 + y1) / 2).toFixed(3),
-					}
-				};
-			});
-
-			return `Found these elements on screen: ${JSON.stringify(result)}`;
 		}
 	);
 
@@ -340,52 +310,25 @@ export const createMcpServer = (config?: MobileMcpConfig): McpServer => {
 	);
 
 	tool(
-		"mobile_get_source",
-		"Get the source of the current screen. Returns the XML representation of the screen.",
+		"take_screenshot_and_analyze_elements_precise_coordinates",
+		"Take a screenshot of the mobile device and analyze the elements on screen with precise coordinates. It will return a JSON with the normalized coordinates (0-1) of the elements on screen.",
 		{},
 		async ({}) => {
-			if (!robot) {
-				throw new Error("No device selected");
+			requireRobot();
+
+			try {
+				// Create a vision analyzer with the current robot and the API key
+				const visionAnalyzer = new VisionAnalyzer(robot!, config?.imageOptions);
+
+				// Find UI elements using Vision API
+				const elements = await visionAnalyzer.findUIElements();
+
+				// Format the result as a JSON string
+				return JSON.stringify(elements, null, 2);
+			} catch (err) {
+				error(`Error in take_screenshot_and_analyze_elements_precise_coordinates: ${err}`);
+				return `Error analyzing screen with Vision API: ${err}`;
 			}
-
-			const elements = await robot.getElementsOnScreen();
-			return JSON.stringify(elements);
-		}
-	);
-
-	tool(
-		"mobile_unity_tap",
-		"Specialized tap for Unity games. Use this when regular taps are not working in Unity-based games. Provides better touch simulation.",
-		{
-			x: z.number().describe("The x coordinate to tap (normalized between 0 and 1)"),
-			y: z.number().describe("The y coordinate to tap (normalized between 0 and 1)"),
-		},
-		async ({ x, y }) => {
-			if (!robot) {
-				throw new Error("No device selected");
-			}
-
-			const screenSize = await robot.getScreenSize();
-			const x0 = Math.floor(screenSize.width * x);
-			const y0 = Math.floor(screenSize.height * y);
-
-			// Special handling for Unity games
-			if (robot instanceof AndroidRobot) {
-				try {
-					// First try Samsung's sec_touchscreen (especially for Samsung devices)
-					await robot.adb("shell", "input", "sec_touchscreen", "tap", `${x0}`, `${y0}`);
-					trace(`Used sec_touchscreen tap at ${x0},${y0}`);
-				} catch (err) {
-					// If sec_touchscreen fails, fall back to swipe method
-					trace(`sec_touchscreen failed, falling back to swipe: ${err}`);
-					await robot.adb("shell", "input", "swipe", `${x0}`, `${y0}`, `${x0}`, `${y0}`, "1");
-				}
-			} else {
-				// Fallback to regular tap for non-Android devices
-				await robot.tap(x0, y0);
-			}
-
-			return `Unity tap at coordinates: ${x}, ${y} (${x0}, ${y0} pixels)`;
 		}
 	);
 
